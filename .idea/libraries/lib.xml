@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="lib">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../../Installers/HitachiEnergy/jboss-as-8.2.1.Final-Wildfly-SAAS-ECJ/standalone/deployments/Ellipse-EL9.0.34_.5975.1.493/lib" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/../../Installers/HitachiEnergy/jboss-as-8.2.1.Final-Wildfly-SAAS-ECJ/standalone/deployments/Ellipse-EL9.0.34_.5975.1.493/lib" />
+    </SOURCES>
+    <jarDirectory url="file://$PROJECT_DIR$/../../Installers/HitachiEnergy/jboss-as-8.2.1.Final-Wildfly-SAAS-ECJ/standalone/deployments/Ellipse-EL9.0.34_.5975.1.493/lib" recursive="false" />
+    <jarDirectory url="file://$PROJECT_DIR$/../../Installers/HitachiEnergy/jboss-as-8.2.1.Final-Wildfly-SAAS-ECJ/standalone/deployments/Ellipse-EL9.0.34_.5975.1.493/lib" recursive="false" type="SOURCES" />
+  </library>
+</component>
