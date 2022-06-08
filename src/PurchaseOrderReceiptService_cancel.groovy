@@ -1,6 +1,10 @@
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.hook.hooks.ServiceHook
 import com.mincom.ellipse.types.m3140.instances.PurchaseOrderReceiptDTO
 import com.mincom.ellipse.types.m3140.instances.PurchaseOrderReceiptServiceResult
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import javax.naming.InitialContext
@@ -12,44 +16,11 @@ class PurchaseOrderReceiptService_cancel extends ServiceHook{
     Object CAISource = initialContext.lookup("java:jboss/datasources/ApplicationDatasource")
     def sql = new Sql(CAISource)
 
-    String getHostUrl(String hostName){
-        String result
-        String instance
-
-        InitialContext initialContext = new InitialContext()
-        Object dataSource = initialContext.lookup("java:jboss/datasources/ReadOnlyDatasource")
-        Sql sql = new Sql(dataSource)
-
-        if (hostName.contains("ellprd")){
-            instance = "ELLPRD"
-        }
-        else if (hostName.contains("elltrn")){
-            instance = "ELLTRN"
-        }
-        else if (hostName.contains("elltst")){
-            instance = "ELLTST"
-        }
-        else {
-            instance = "ELLDEV"
-        }
-
-        String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
-        Object queryMSF010Result = sql.firstRow(queryMSF010)
-        result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
-
-        return result
-    }
-
     @Override
     Object onPreExecute(Object input){
         PurchaseOrderReceiptDTO purchaseOrderReceiptDTO = (PurchaseOrderReceiptDTO) input
 
         String changeNumber = purchaseOrderReceiptDTO.changeNumber ? purchaseOrderReceiptDTO.changeNumber.getValue() : ""
-        log.info("---orderNumber: ${purchaseOrderReceiptDTO.purchaseOrderNumber.getValue()}")
-        log.info("---orderItemNumber: ${purchaseOrderReceiptDTO.purchaseOrderItemNumber.getValue()}")
-        log.info("---receiptRef: ${purchaseOrderReceiptDTO.receiptReference.getValue()}")
-        log.info("---receiptRefCancel: ${purchaseOrderReceiptDTO.receiptReferenceCancel.getValue()}")
-        log.info("---changeNumber: $changeNumber")
 
         PurchaseOrderReceiptServiceResult purchaseOrderReceiptServiceResult = new PurchaseOrderReceiptServiceResult()
 

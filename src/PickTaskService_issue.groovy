@@ -32,6 +32,7 @@ import com.mincom.ellipse.types.m0000.instances.TrackRefNo
 import com.mincom.enterpriseservice.exception.*
 import com.mincom.enterpriseservice.ellipse.*
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import org.apache.derby.iapi.services.classfile.CONSTANT_Index_info
 
@@ -511,7 +512,9 @@ class PickTaskService_issue extends ServiceHook{
 		InetAddress ip
 		ip = InetAddress.getLocalHost()
 		String hostname = ip.getHostName()
-		String hostUrl = getHostUrl(hostname)
+		ArrayList config = getConfig(hostname)
+		String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+		Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
 		String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ACTCOST-XML"
@@ -550,34 +553,6 @@ class PickTaskService_issue extends ServiceHook{
 			workOrder = workOrder.trim() != "" ? workOrder.trim() : ""
 			log.info("workOrder: $workOrder")
 			if (workOrder != ""){
-//				String qryIreqItem = "WITH MAT AS(SELECT DSTRCT_CODE\n" +
-//						"                  ,WORK_ORDER\n" +
-//						"                  ,SUM(TRAN_AMOUNT) MAT_COST\n" +
-//						"            FROM MSF900 WHERE WORK_ORDER = '$workOrder'\n" +
-//						"            AND (REC900_TYPE = 'S' OR (REC900_TYPE = 'P' AND SERV_ITM_IND = ' '))\n" +
-//						"            AND DSTRCT_CODE = '$districtNo'\n" +
-//						"            GROUP BY DSTRCT_CODE\n" +
-//						"                    ,WORK_ORDER), \n" +
-//						"     SER AS(SELECT DSTRCT_CODE\n" +
-//						"                 ,WORK_ORDER\n" +
-//						"                 ,SUM(TRAN_AMOUNT) SERV_COST \n" +
-//						"            FROM MSF900\n" +
-//						"            WHERE WORK_ORDER = '$workOrder'\n" +
-//						"            AND DSTRCT_CODE = '$districtNo'\n" +
-//						"            AND REC900_TYPE = 'P'\n" +
-//						"            AND serv_itm_ind = 'S'\n" +
-//						"            GROUP BY DSTRCT_CODE\n" +
-//						"                    ,WORK_ORDER)\n" +
-//						"SELECT A.DSTRCT_CODE\n" +
-//						"      ,A.WORK_ORDER\n" +
-//						"      ,CASE WHEN B.MAT_COST IS NOT NULL THEN B.MAT_COST ELSE 0 END MAT_COST\n" +
-//						"      ,CASE WHEN C.SERV_COST IS NOT NULl THEN C.SERV_COST ELSE 0 END SERV_COST\n" +
-//						"      ,(CASE WHEN B.MAT_COST IS NOT NULL THEN B.MAT_COST ELSE 0 END) + (CASE WHEN C.SERV_COST IS NOT NULL THEN C.SERV_COST ELSE 0 END) TOTAL_COST\n" +
-//						"FROM MSF620 A\n" +
-//						"LEFT OUTER JOIN MAT B ON A.DSTRCT_CODE = B.DSTRCT_CODE AND A.WORK_ORDER = B.WORK_ORDER \n" +
-//						"LEFT OUTER JOIN SER C ON A.DSTRCT_CODE = C.DSTRCT_CODE AND A.WORK_ORDER = C.WORK_ORDER \n" +
-//						"WHERE A.DSTRCT_CODE = '$districtNo' \n" +
-//						"AND A.WORK_ORDER = '$workOrder'"
 				String qryIreqItem = "WITH WOCOST AS (SELECT A.DSTRCT_CODE\n" +
 						"      ,A.WORK_ORDER\n" +
 						"      ,SUM(CASE WHEN A.DSTRCT_CODE = '$districtNo' AND (A.REC900_TYPE = 'S' OR (A.REC900_TYPE = 'P' AND B.SERV_ITM_IND = ' ')) THEN B.TRAN_AMOUNT ELSE 0 END) MAT_COST\n" +
@@ -629,6 +604,10 @@ class PickTaskService_issue extends ServiceHook{
 
 				log.info("ARS --- XML: $xmlMessage")
 
+				if (hostUrl != "" && active){
+
+				}
+
 				def url = new URL(postUrl)
 				HttpURLConnection connection = url.openConnection()
 				connection.setRequestMethod("POST")
@@ -663,7 +642,9 @@ class PickTaskService_issue extends ServiceHook{
 		InetAddress ip
 		ip = InetAddress.getLocalHost()
 		String hostname = ip.getHostName()
-		String hostUrl = getHostUrl(hostname)
+		ArrayList config = getConfig(hostname)
+		String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+		Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
 		String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ACTMAT-XML"
@@ -822,7 +803,9 @@ class PickTaskService_issue extends ServiceHook{
 		InetAddress ip
 		ip = InetAddress.getLocalHost()
 		String hostname = ip.getHostName()
-		String hostUrl = getHostUrl(hostname)
+		ArrayList config = getConfig(hostname)
+		String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+		Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
 		String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ITEM-XML"
@@ -941,24 +924,26 @@ class PickTaskService_issue extends ServiceHook{
 
 		log.info("ARS --- XML: $xmlMessage")
 
-		def url = new URL(postUrl)
-		HttpURLConnection connection = url.openConnection()
-		connection.setRequestMethod("POST")
-		connection.setDoOutput(true)
-		connection.setRequestProperty("Content-Type", "application/xml")
-		connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
-		connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-		log.info("responsecode: ${connection.getResponseCode()}")
+		if (hostUrl != "" && active){
+			def url = new URL(postUrl)
+			HttpURLConnection connection = url.openConnection()
+			connection.setRequestMethod("POST")
+			connection.setDoOutput(true)
+			connection.setRequestProperty("Content-Type", "application/xml")
+			connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+			connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+			log.info("responsecode: ${connection.getResponseCode()}")
 
-		if (connection.getResponseCode() != 200) {
-			String responseMessage = connection.content.toString()
-			log.info("responseMessage: $responseMessage")
-			String errorCode = "9999"
+			if (connection.getResponseCode() != 200) {
+				String responseMessage = connection.content.toString()
+				log.info("responseMessage: $responseMessage")
+				String errorCode = "9999"
 
-			throw new EnterpriseServiceOperationException(
-					new ErrorMessageDTO(
-							errorCode, responseMessage, "", 0, 0))
-			return input
+				throw new EnterpriseServiceOperationException(
+						new ErrorMessageDTO(
+								errorCode, responseMessage, "", 0, 0))
+				return input
+			}
 		}
 	}
 	String getHostUrl(String hostName){
@@ -986,6 +971,33 @@ class PickTaskService_issue extends ServiceHook{
 		String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
 		Object queryMSF010Result = sql.firstRow(queryMSF010)
 		result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+
+		return result
+	}
+	def getConfig(String hostName){
+		ArrayList result = []
+		String instance
+
+		if (hostName.contains("ellprd")){
+			instance = "ELLPRD"
+		}
+		else if (hostName.contains("elltrn")){
+			instance = "ELLTRN"
+		}
+		else if (hostName.contains("elltst")){
+			instance = "ELLTST"
+		}
+		else {
+			instance = "ELLDEV"
+		}
+
+		Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+		MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+		if (msf010Rec){
+			result.add(msf010Rec.getTableDesc().trim())
+			result.add(msf010Rec.getActiveFlag().trim())
+		}
 
 		return result
 	}
@@ -1184,8 +1196,13 @@ class PickTaskService_issue extends ServiceHook{
 
 	@Override
 	Object onPostExecute(Object input, Object result) {
-		
-		log.info("[ARSIADI] Hooks PickTaskService_issue onPostExecute logging.version: $hookVersion");
+		log.info("[ARSIADI] Hooks PickTaskService_issue onPostExecute logging.version: $hookVersion")
+
+		InetAddress ip = InetAddress.getLocalHost()
+		String hostname = ip.getHostName()
+		ArrayList config = getConfig(hostname)
+		String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+		Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 		
 		PickTaskIssueServiceResult reply = (PickTaskIssueServiceResult) result
 		PickTaskIssueDTO c = (PickTaskIssueDTO) input
@@ -1263,8 +1280,11 @@ class PickTaskService_issue extends ServiceHook{
 				return input
 		}
 
-		integrateActualCost(input, result)
-		integrateActualQty(input, result)
+		if (hostUrl != "" && active){
+			integrateActualCost(input, result)
+			integrateActualQty(input, result)
+		}
+
 		return result
 	}
 }

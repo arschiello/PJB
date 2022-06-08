@@ -4,10 +4,15 @@
 //.................. pada saat Create / Modify COA di Ellipse
 
 /*Library yang digunakan*/
+
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
 
@@ -45,18 +50,36 @@ class MSM960A extends MSOHook{
         return result
     }
 
-//  annotation @Override menunjukkan bahwa event onPreSubmit ini akan mengganti class standard Ellipse (jika ada)
-//  Untuk program MSO, terdapat 3 event standard yang bisa dimodify dengan tipe parameter GenericMsoRecord:
-//  1. onPreSubmit(GeneridMsoRecord request) - dijalankan sebelum fungsi "Submit" standard Ellipse
-//  2. onPostSubmit(GenericMsoRecord request, GenericMsoRecord response) - dijalankan setelah fungsi "Submit" standard Ellipse. Terdapat dua parameter yaitu request dan response
-//  3. onDisplay(GenericMsoRecord request) - dijalankan pada saat screen dimunculkan
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
-    @Override
-    GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
-//      log.info(string) digunakan untuk menampilkan isi variable atau text pada trace file yang dihasilkan
-        log.info("MSM960A Hooks onPreSubmit")
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
 
-//      def keyword digunakan untuk mendefinisikan tipe variable atau function secara umum sehingga definisi variable dengan tipe apa pun bisa menggunakan def
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
+
+    def integrationMaximo(GenericMsoRecord screen, String hostUrl){
+        //      def keyword digunakan untuk mendefinisikan tipe variable atau function secara umum sehingga definisi variable dengan tipe apa pun bisa menggunakan def
 //      new Date() digunakan untuk menangkap (instantiate) tanggal saat ini dari system
         def date = new Date()
 
@@ -69,39 +92,8 @@ class MSM960A extends MSOHook{
 //      Instantiate MsoField dan assign ke variable errField untuk menangkap pesan error setelah hooks dijalankan
         MsoField errField = new MsoField()
 
-//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
-        InetAddress ip = InetAddress.getLocalHost()
-
-//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
-        String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
-
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-COA-XML"
-
-//        if (hostname.contains("ellprd"))
-//        {
-//            postUrl = "http://maximo-production.ptpjb.com:9080/meaweb/es/EXTSYS1/MXE-COA-XML"
-//        }
-//        else if (hostname.contains("elltst"))
-//        {
-//            postUrl = "http://maximo-training.ptpjb.com:9082/meaweb/es/EXTSYS1/MXE-COA-XML"
-//        }
-//        else
-//        {
-//            postUrl = "http://maximo-training.ptpjb.com:9082/meaweb/es/EXTSYS1/MXE-COA-XML"
-//        }
-
-        log.info("FKeys: ${screen.getField("FKEYS1I").getValue()}")
-        log.info("NextAction: ${screen.nextAction}")
-
-//      trace argument untuk keperluan tracing proses
-        log.info("NextAction1: ${screen.nextAction}")
-        log.info("AccountCode: ${screen.getField("ACCOUNT1I1").getValue()}")
-        log.info("Account Desc: ${screen.getField("ACCOUNT_DESC1I1").getValue()}")
-        log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I1").getValue()}")
-        log.info("Action: ${screen.getField("ACTION1I1").getValue()}")
-        log.info("FKeys1: ${screen.getField("FKEYS1I").getValue()}")
 
         String AccountCode = ""
         String accountSegment1 = ""
@@ -194,15 +186,6 @@ class MSM960A extends MSOHook{
                         "</SyncMXE-COA-XML>"
             }
 
-            log.info("ARS --- XML: $xmlMessage")
-            log.info("Account Formatted: $accountCodeFormatted")
-            log.info("PostUrl: $postUrl")
-            log.info("Active Date: $activeStatDate")
-            log.info("Active Status: $activeStat")
-            log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I1").getValue()}")
-            log.info("Account Description: $accountDesc")
-            log.info("action1i1: $action1i1")
-
 // proses berikut menjelaskan urutan pengiriman data ke API Maximo
             def url = new URL(postUrl)
             HttpURLConnection authConn = url.openConnection()
@@ -235,6 +218,28 @@ class MSM960A extends MSOHook{
 
 // jika tidak error maka kembalikan null
             return null
+        }
+    }
+
+//  annotation @Override menunjukkan bahwa event onPreSubmit ini akan mengganti class standard Ellipse (jika ada)
+//  Untuk program MSO, terdapat 3 event standard yang bisa dimodify dengan tipe parameter GenericMsoRecord:
+//  1. onPreSubmit(GeneridMsoRecord request) - dijalankan sebelum fungsi "Submit" standard Ellipse
+//  2. onPostSubmit(GenericMsoRecord request, GenericMsoRecord response) - dijalankan setelah fungsi "Submit" standard Ellipse. Terdapat dua parameter yaitu request dan response
+//  3. onDisplay(GenericMsoRecord request) - dijalankan pada saat screen dimunculkan
+
+    @Override
+    GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
+//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
+        InetAddress ip = InetAddress.getLocalHost()
+
+//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
+        String hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" && active){
+            integrationMaximo(screen, hostUrl)
         }
     }
 }

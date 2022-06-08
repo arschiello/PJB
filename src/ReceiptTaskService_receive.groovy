@@ -5,6 +5,8 @@
  **/
 
 import com.mincom.ellipse.attribute.Attribute
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.hook.hooks.ServiceHook
 import com.mincom.ellipse.service.m3140.receipttask.ReceiptTaskService
@@ -21,6 +23,8 @@ import com.mincom.enterpriseservice.ellipse.*
 import com.mincom.ellipse.*
 import com.mincom.ellipse.ejra.mso.*;
 import com.mincom.ellipse.client.connection.*
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import org.apache.commons.lang.StringEscapeUtils
 
 import javax.naming.InitialContext
@@ -45,7 +49,10 @@ class ReceiptTaskService_receive extends ServiceHook{
 
 	InetAddress ip = InetAddress.getLocalHost()
 	String hostname = ip.getHostName()
-	String hostUrl = getHostUrl(hostname)
+	ArrayList config = getConfig(hostname)
+	String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+	Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
 	String postUrl
 
 	InitialContext initial = new InitialContext()
@@ -230,24 +237,26 @@ class ReceiptTaskService_receive extends ServiceHook{
 
 			log.info("ARS --- XML: $xmlMessage")
 
-			def url = new URL(postUrl)
-			HttpURLConnection connection = url.openConnection()
-			connection.setRequestMethod("POST")
-			connection.setDoOutput(true)
-			connection.setRequestProperty("Content-Type", "application/xml")
-			connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
-			connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-			log.info("responsecode: ${connection.getResponseCode()}")
+			if (hostUrl && active){
+				def url = new URL(postUrl)
+				HttpURLConnection connection = url.openConnection()
+				connection.setRequestMethod("POST")
+				connection.setDoOutput(true)
+				connection.setRequestProperty("Content-Type", "application/xml")
+				connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+				connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+				log.info("responsecode: ${connection.getResponseCode()}")
 
-			if (connection.getResponseCode() != 200) {
-				String responseMessage = connection.content.toString()
-				log.info("responseMessage: $responseMessage")
-				String errorCode = "9999"
+				if (connection.getResponseCode() != 200) {
+					String responseMessage = connection.content.toString()
+					log.info("responseMessage: $responseMessage")
+					String errorCode = "9999"
 
-				throw new EnterpriseServiceOperationException(
-						new ErrorMessageDTO(
-								errorCode, responseMessage, "", 0, 0))
-				return null
+					throw new EnterpriseServiceOperationException(
+							new ErrorMessageDTO(
+									errorCode, responseMessage, "", 0, 0))
+					return null
+				}
 			}
 		}
 		
@@ -479,6 +488,33 @@ class ReceiptTaskService_receive extends ServiceHook{
 		String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
 		Object queryMSF010Result = sql.firstRow(queryMSF010)
 		result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+
+		return result
+	}
+	def getConfig(String hostName){
+		ArrayList result = []
+		String instance
+
+		if (hostName.contains("ellprd")){
+			instance = "ELLPRD"
+		}
+		else if (hostName.contains("elltrn")){
+			instance = "ELLTRN"
+		}
+		else if (hostName.contains("elltst")){
+			instance = "ELLTST"
+		}
+		else {
+			instance = "ELLDEV"
+		}
+
+		Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+		MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+		if (msf010Rec){
+			result.add(msf010Rec.getTableDesc().trim())
+			result.add(msf010Rec.getActiveFlag().trim())
+		}
 
 		return result
 	}

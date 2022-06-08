@@ -1,3 +1,5 @@
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.edoi.ejb.msf200.MSF200Key
 import com.mincom.ellipse.edoi.ejb.msf200.MSF200Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
@@ -5,6 +7,7 @@ import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
@@ -43,21 +46,35 @@ class MSM200B extends MSOHook{
         return result
     }
 
-    @Override
-    GenericMsoRecord onPostSubmit(GenericMsoRecord request, GenericMsoRecord response){
-        log.info("Arsiadi Hooks MSM200B onPostSubmit version: $hookVersion")
-        log.info("NextAction: ${request.nextAction}")
-        log.info("SupplierNo: ${request.getField("SUPPLIER_NO2I").getValue()}")
-        log.info("SupplierName: ${request.getField("SUPPLIER_NAME2I").getValue()}")
-        log.info("OrderAddress1: ${request.getField("ORDER_ADDR_12I").getValue()}")
-        log.info("OrderAddress2: ${request.getField("ORDER_ADDR_22I").getValue()}")
-        log.info("OrderAddress3: ${request.getField("ORDER_ADDR_32I").getValue()}")
-        log.info("OrderZip: ${request.getField("ORDER_ZIP2I").getValue()}")
-        log.info("OrderContact: ${request.getField("ORDER_CONTACT2I").getValue()}")
-        log.info("OrderPhone: ${request.getField("ORDER_PHONE2I").getValue()}")
-        log.info("OrderEmail: ${request.getField("ORDER_EMAIL_L12I").getValue()}")
-        log.info("OrderFax: ${request.getField("ORDER_FAX_NO2I").getValue().trim()}")
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
+
+    def integrationMaximo(GenericMsoRecord request, GenericMsoRecord response, String hostUrl){
         int nextAction = request.nextAction
         String supplierNo = request.getField("SUPPLIER_NO2I").getValue().trim()
         String supplierName = StringEscapeUtils.escapeXml(request.getField("SUPPLIER_NAME2I").getValue().trim())
@@ -124,13 +141,6 @@ class MSM200B extends MSOHook{
 
         log.info("message: $xmlMessage")
 
-//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
-        InetAddress ip = InetAddress.getLocalHost()
-
-//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
-        String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
-
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-COMP-XML"
         log.info("postUrl: $postUrl")
@@ -189,6 +199,23 @@ class MSM200B extends MSOHook{
                 return request
             }
         }
+    }
+
+    @Override
+    GenericMsoRecord onPostSubmit(GenericMsoRecord request, GenericMsoRecord response){
+//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
+        InetAddress ip = InetAddress.getLocalHost()
+
+//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
+        String hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" & active){
+            integrationMaximo(request, response, hostUrl)
+        }
+
         return null
     }
 }

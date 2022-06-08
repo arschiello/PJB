@@ -16,6 +16,7 @@ import com.mincom.ellipse.types.m3140.instances.PickTaskIssueServiceResult
 import com.mincom.enterpriseservice.ellipse.ErrorMessageDTO
 import com.mincom.enterpriseservice.exception.EnterpriseServiceOperationException
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import com.mincom.mims.tech.util.ApplicationError
 import groovy.sql.Sql
@@ -487,7 +488,10 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
         InetAddress ip
         ip = InetAddress.getLocalHost()
         String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+//        String hostUrl = getHostUrl(hostname)
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ACTCOST-XML"
@@ -616,7 +620,10 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
         InetAddress ip
         ip = InetAddress.getLocalHost()
         String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+//        String hostUrl = getHostUrl(hostname)
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ACTMAT-XML"
@@ -796,7 +803,9 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
         InetAddress ip
         ip = InetAddress.getLocalHost()
         String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ITEM-XML"
@@ -968,6 +977,33 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
         String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
         Object queryMSF010Result = sql.firstRow(queryMSF010)
         result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+
+        return result
+    }
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
+
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
 
         return result
     }
@@ -1178,6 +1214,12 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
     Object onPostExecute(Object input, Object result) {
         log.info("[ARSIADI] Hooks PickTaskService_multipleIssueNonComplexStock onPostExecute logging.version: $hookVersion")
 
+        InetAddress ip = InetAddress.getLocalHost()
+        String hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
         Boolean errorFlag = false
 
         PickTaskIssueServiceResult[] pickTaskIssueServiceResults = (PickTaskIssueServiceResult[]) result
@@ -1202,7 +1244,7 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
             }
         }
 
-        if (!errorFlag) {
+        if (!errorFlag && hostUrl != "" && active) {
             integrateActualCost(input, result)
             integrateActualQty(input, result)
         }

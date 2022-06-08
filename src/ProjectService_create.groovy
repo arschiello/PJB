@@ -4,10 +4,15 @@
 //.................. Budget Code ke Maximo pada saat Create Project di Ellipse
 
 /*Library yang digunakan*/
+
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.hook.hooks.ServiceHook
 import com.mincom.enterpriseservice.ellipse.ErrorMessageDTO
 import com.mincom.enterpriseservice.ellipse.project.ProjectServiceCreateReplyDTO
 import com.mincom.enterpriseservice.exception.EnterpriseServiceOperationException
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 
 import javax.naming.InitialContext
@@ -66,33 +71,36 @@ class ProjectService_create extends ServiceHook {
         InetAddress ip = InetAddress.getLocalHost()
 // membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
         String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 // mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-PRK-XML"
 
+        if (hostUrl != "" && active){
 // proses berikut menjelaskan urutan pengiriman data ke API Maximo
-        def url = new URL(postUrl)
-        HttpURLConnection connection = url.openConnection()
-        connection.setRequestMethod("POST")
-        connection.setDoOutput(true)
-        connection.setRequestProperty("Content-Type", "application/xml")
-        connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+            def url = new URL(postUrl)
+            HttpURLConnection connection = url.openConnection()
+            connection.setRequestMethod("POST")
+            connection.setDoOutput(true)
+            connection.setRequestProperty("Content-Type", "application/xml")
+            connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
 // pada baris ini, pesan yang sudah diformat dalam bentuk xml dikirimkan ke API Maximo
-        connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-        log.info("responsecode: ${connection.getResponseCode()}")
+            connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+            log.info("responsecode: ${connection.getResponseCode()}")
 // membaca response dari API Maximo. Jika response code bukan "200" maka kembalikan error
-        if (connection.getResponseCode() != 200) {
-            String responseMessage = connection.content.toString()
-            log.info("responseMessage: $responseMessage")
-            String errorCode = "9999"
+            if (connection.getResponseCode() != 200) {
+                String responseMessage = connection.content.toString()
+                log.info("responseMessage: $responseMessage")
+                String errorCode = "9999"
 
-            throw new EnterpriseServiceOperationException(
-                    new ErrorMessageDTO(
-                            errorCode, responseMessage, "", 0, 0))
-// jika error maka kembalikan request / input ke layar ellipse
-//            return input
+                throw new EnterpriseServiceOperationException(
+                        new ErrorMessageDTO(
+                                errorCode, responseMessage, "", 0, 0))
+            }
         }
+
 // jika tidak error maka kembalikan response standard ke layar
         return result
     }
@@ -121,6 +129,33 @@ class ProjectService_create extends ServiceHook {
         String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
         Object queryMSF010Result = sql.firstRow(queryMSF010)
         result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+
+        return result
+    }
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
+
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
 
         return result
     }

@@ -17,6 +17,7 @@ import com.mincom.ellipse.hook.hooks.MSOHook
 import com.mincom.enterpriseservice.ellipse.ErrorMessageDTO
 import com.mincom.enterpriseservice.exception.EnterpriseServiceOperationException
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import javax.naming.InitialContext
@@ -698,12 +699,9 @@ class MSM156A extends MSOHook{
         log.info("result: $result")
         return result
     }
-    def integrateActualCost(GenericMsoRecord screen){
+    def integrateActualCost(GenericMsoRecord screen, String hostUrl){
         MsoField errField = new MsoField()
-        InetAddress ip
-        ip = InetAddress.getLocalHost()
-        String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ACTCOST-XML"
 
         log.info("Arsiadi integrateActualCost MSM156A Version: $hookVersion")
@@ -840,34 +838,15 @@ class MSM156A extends MSOHook{
                     authConn.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
                     log.info("responsecode: ${authConn.getResponseCode()}")
                     log.info("responseMessage: ${authConn.content.toString()}")
-
-//                    if (authConn.getResponseCode() != 200) {
-//                        String responseMessage = authConn.content.toString()
-//                        log.info("responseMessage: $responseMessage")
-//                        String errorCode = "9999"
-//                        screen.setErrorMessage(
-//                                new MsoErrorMessage("",
-//                                        errorCode,
-//                                        responseMessage,
-//                                        MsoErrorMessage.ERR_TYPE_ERROR,
-//                                        MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
-//
-//                        errField.setName("VALUE_RECVD1I")
-//                        screen.setCurrentCursorField(errField)
-//                        return screen
-//                    }
                 }
             }
         }
         return null
     }
-    String getHostUrl(String hostName){
-        String result
-        String instance
 
-        InitialContext initialContext = new InitialContext()
-        Object dataSource = initialContext.lookup("java:jboss/datasources/ReadOnlyDatasource")
-        Sql sql = new Sql(dataSource)
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
         if (hostName.contains("ellprd")){
             instance = "ELLPRD"
@@ -882,9 +861,13 @@ class MSM156A extends MSOHook{
             instance = "ELLDEV"
         }
 
-        String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
-        Object queryMSF010Result = sql.firstRow(queryMSF010)
-        result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
 
         return result
     }
@@ -893,7 +876,17 @@ class MSM156A extends MSOHook{
     GenericMsoRecord onPreSubmit(GenericMsoRecord screen) {
         log.info("[Arsiadi] Hooks onPreSubmit MSM156A logging.version: $hookVersion")
 
-        integrateActualCost(screen)
+        InetAddress ip
+        ip = InetAddress.getLocalHost()
+        String hostname = ip.getHostName()
+
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean integrationActive = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" && integrationActive){
+            integrateActualCost(screen, hostUrl)
+        }
 
         String pBCActiveFlag = getModuleSwitch("+PBC", "MSM156A")
         log.info("PBC Active Flag: $pBCActiveFlag")

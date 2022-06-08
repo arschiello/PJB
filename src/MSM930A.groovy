@@ -1,7 +1,11 @@
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
 
@@ -36,16 +40,35 @@ public class MSM930A extends MSOHook{
         return result
     }
 
-    @Override
-    public GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
-        log.info("MSM930A Hooks onPreSubmit")
-        log.info("NextAction: ${screen.nextAction}")
-        log.info("AccountCode: ${screen.getField("EXP_ELEMENT1I").getValue()}")
-        log.info("Account Desc: ${screen.getField("EXP_ELE_DESC1I").getValue()}")
-        log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I").getValue()}")
-        log.info("FKeys: ${screen.getField("FKEYS1I").getValue()}")
-        log.info("confDel: ${screen.getField("CONF_DEL1I").getValue().trim()}")
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
+
+    def integrationMaximo(GenericMsoRecord screen, String hostUrl){
         String AccountCode = screen.getField("EXP_ELEMENT1I").getValue().trim()
         String AccountDesc = screen.getField("EXP_ELE_DESC1I").getValue().trim()
         String ActiveStatus = screen.getField("ACTIVE_STATUS1I").getValue()
@@ -56,32 +79,10 @@ public class MSM930A extends MSOHook{
         String Action = screen.nextAction
         String activeStat = ""
         MsoField errField = new MsoField()
-        String hostname;
-        InetAddress ip;
-        ip = InetAddress.getLocalHost();
-        hostname = ip.getHostName();
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
-        def postUrl
-        if (hostname.contains("ellprd"))
-        {
-            postUrl = "http://maximo-production.ptpjb.com:9080/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
-        }
-        else if (hostname.contains("elltst"))
-        {
-            postUrl = "http://maximo-training.ptpjb.com:9082/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
-        }
-        else
-        {
-            postUrl = "http://maximo-training.ptpjb.com:9082/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
-        }
-
+        String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
         AccountDesc = StringEscapeUtils.escapeXml(AccountDesc)
-
-        log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I").getValue()}")
-        log.info("AccountCode: $AccountCode")
-        log.info("Account Description: $AccountDesc")
-        log.info("Option1: $Option1")
 
         if (ActiveStatus){
             if (ActiveStatus.trim() != ""){
@@ -175,7 +176,8 @@ public class MSM930A extends MSOHook{
                     }
                 }
             }
-        } else{
+        }
+        else{
             if (confDel == "Y"){
                 xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                         "<SyncMXE-GLCOMP-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:37:06+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\"  maximoVersion=\"7620190514-1348V7611-365\">\n" +
@@ -253,6 +255,21 @@ public class MSM930A extends MSOHook{
                     }
                 }
             }
+        }
+    }
+
+    @Override
+    public GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
+        String hostname
+        InetAddress ip
+        ip = InetAddress.getLocalHost()
+        hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" && active){
+            integrationMaximo(screen, hostUrl)
         }
     }
 }

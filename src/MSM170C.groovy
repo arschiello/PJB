@@ -1,7 +1,11 @@
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
 
@@ -42,23 +46,38 @@ class MSM170C extends MSOHook{
         return result
     }
 
-    @Override
-    GenericMsoRecord onPostSubmit(GenericMsoRecord request, GenericMsoRecord response){
-        log.info("Arsiadi Hooks MSM170C onPostSubmit version: $hookVersion")
-        log.info("NextAction: ${request.nextAction}")
-        log.info("StockCode: ${request.getField("STOCK_CODE3I").getValue()}")
-        log.info("stockDesc: ${request.getField("ITEM_NAMEA3I").getValue().trim()}")
-        log.info("uoi: ${request.getField("UNIT_OF_ISSUE3I").getValue().trim()}")
-        log.info("warehouseId: ${request.getField("HOME_WHOUSE3I").getValue()}")
-        log.info("primaryCategory: ${request.getField("PRIMARY_CATEG3I").getValue()}")
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
+
+    def integrationMaximo(GenericMsoRecord request, GenericMsoRecord response, String hostUrl){
         Integer nextAction = request.nextAction
         String districtCode = tools.commarea.District
         String stockCode = request.getField("STOCK_CODE3I").getValue()
-
-// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-//        Query to get soh -- start
-// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         String queryCommand = "with b as (\n" +
                 "select b.DSTRCT_CODE,a.STOCK_CODE,sum(a.SOH) SOH\n" +
@@ -104,15 +123,11 @@ class MSM170C extends MSOHook{
         log.info("---duesOut: $duesOut")
         log.info("---available: $available")
 
-// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-//        Query to get soh -- end
-// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
         String queryMSF100 = "SELECT STK_DESC FROM MSF100 WHERE STOCK_CODE = '${stockCode.trim()}'"
         def queryMSF100Result = sql.firstRow(queryMSF100)
         String stockDesc = queryMSF100Result ? queryMSF100Result.STK_DESC.trim() : ""
         stockDesc = stockDesc.length() > 50 ? stockDesc.substring(0, 49) : stockDesc
-//        String stockDesc = StringEscapeUtils.escapeXml(request.getField("ITEM_NAMEA3I").getValue().trim())
+//      String stockDesc = StringEscapeUtils.escapeXml(request.getField("ITEM_NAMEA3I").getValue().trim())
 
         String unitOfIssue = StringEscapeUtils.escapeXml(request.getField("UNIT_OF_ISSUE3I").getValue().trim())
         String warehouseId = request.getField("HOME_WHOUSE3I").getValue()
@@ -148,13 +163,6 @@ class MSM170C extends MSOHook{
                 "    </MXE-ITEM-XMLSet>\n" +
                 "</SyncMXE-ITEM-XML>"
         log.info("message: $xmlMessage")
-
-//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
-        InetAddress ip = InetAddress.getLocalHost()
-
-//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
-        String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
 
 //      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-ITEM-XML"
@@ -215,6 +223,23 @@ class MSM170C extends MSOHook{
                 return request
             }
         }
+    }
+
+    @Override
+    GenericMsoRecord onPostSubmit(GenericMsoRecord request, GenericMsoRecord response){
+//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
+        InetAddress ip = InetAddress.getLocalHost()
+
+//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
+        String hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" && active){
+            integrationMaximo(request, response, hostUrl)
+        }
+
         return null
     }
 }

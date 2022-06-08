@@ -4,6 +4,9 @@
 //.................. pada saat Create / Modify Supplier di Ellipse
 
 /*Library yang digunakan*/
+
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.edoi.ejb.msf200.MSF200Key
 import com.mincom.ellipse.edoi.ejb.msf200.MSF200Rec
 import com.mincom.ellipse.edoi.ejb.msf20a.MSF20AKey
@@ -13,6 +16,7 @@ import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
@@ -24,13 +28,9 @@ import javax.sql.DataSource
 class MSM20DA extends MSOHook{
     String hookVersion = "1"
 
-    String getHostUrl(String hostName){
-        String result
+    def getConfig(String hostName){
+        ArrayList result = []
         String instance
-
-        InitialContext initialContext = new InitialContext()
-        Object dataSource = initialContext.lookup("java:jboss/datasources/ReadOnlyDatasource")
-        Sql sql = new Sql(dataSource)
 
         if (hostName.contains("ellprd")){
             instance = "ELLPRD"
@@ -45,9 +45,13 @@ class MSM20DA extends MSOHook{
             instance = "ELLDEV"
         }
 
-        String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
-        Object queryMSF010Result = sql.firstRow(queryMSF010)
-        result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
 
         return result
     }
@@ -59,12 +63,6 @@ class MSM20DA extends MSOHook{
 //  3. onDisplay(GenericMsoRecord request) - dijalankan pada saat screen dimunculkan
     @Override
     GenericMsoRecord onPostSubmit(GenericMsoRecord request, GenericMsoRecord response){
-        log.info("Arsiadi Hooks MSM20DA onPostSubmit version: $hookVersion")
-        log.info("NextAction: ${request.nextAction}")
-        log.info("SupplierNo: ${request.getField("SUPPLIER_CODE1I").getValue()}")
-        log.info("SupplierName: ${request.getField("SUPPLIER_NAME1I").getValue()}")
-        log.info("District: ${request.getField("DSTRCT_CODE1I").getValue()}")
-
 // definisi variable dengan membaca nilai user yang dimasukkan di layar MSM20DA untuk dikirimkan ke Maximo
         String supplierNo = request.getField("SUPPLIER_CODE1I").getValue()
         String supplierName = request.getField("SUPPLIER_NAME1I").getValue()
@@ -146,46 +144,50 @@ class MSM20DA extends MSOHook{
 
                 log.info("message: $xmlMessage")
 
-//      membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
+// membaca informasi instance Ellipse yang sedang aktif dan assign ke variable "ip" dengan tipe InetAddress
                 InetAddress ip = InetAddress.getLocalHost()
 
-//      membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
+// membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
                 String hostname = ip.getHostName()
-                String hostUrl = getHostUrl(hostname)
+                ArrayList config = getConfig(hostname)
+                String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+                Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
-//      mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
-                String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-COMP-XML"
+                if (hostUrl != "" && active) {
+// mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
+                    String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-COMP-XML"
 
 // proses berikut menjelaskan urutan pengiriman data ke API Maximo
-                def url = new URL(postUrl)
-                HttpURLConnection connection = url.openConnection()
-                connection.setRequestMethod("POST")
-                connection.setDoOutput(true)
-                connection.setRequestProperty("Content-Type", "application/xml")
-                connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+                    def url = new URL(postUrl)
+                    HttpURLConnection connection = url.openConnection()
+                    connection.setRequestMethod("POST")
+                    connection.setDoOutput(true)
+                    connection.setRequestProperty("Content-Type", "application/xml")
+                    connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
 
 // pada baris ini, pesan yang sudah diformat dalam bentuk xml dikirimkan ke API Maximo
-                connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-                log.info("responsecode: ${connection.getResponseCode()}")
+                    connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+                    log.info("responsecode: ${connection.getResponseCode()}")
 
 // membaca response dari API Maximo. Jika response code bukan "200" maka kembalikan error
-                if (connection.getResponseCode() != 200) {
-                    String responseMessage = connection.content.toString()
-                    log.info("responseMessage: $responseMessage")
-                    String errorCode = "9999"
-                    request.setErrorMessage(
-                            new MsoErrorMessage("",
-                                    errorCode,
-                                    responseMessage,
-                                    MsoErrorMessage.ERR_TYPE_ERROR,
-                                    MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
+                    if (connection.getResponseCode() != 200) {
+                        String responseMessage = connection.content.toString()
+                        log.info("responseMessage: $responseMessage")
+                        String errorCode = "9999"
+                        request.setErrorMessage(
+                                new MsoErrorMessage("",
+                                        errorCode,
+                                        responseMessage,
+                                        MsoErrorMessage.ERR_TYPE_ERROR,
+                                        MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
 
-                    MsoField errField = new MsoField()
-                    errField.setName("SUPPLIER_CODE2I")
-                    request.setCurrentCursorField(errField)
+                        MsoField errField = new MsoField()
+                        errField.setName("SUPPLIER_CODE2I")
+                        request.setCurrentCursorField(errField)
 
 // jika error maka kembalikan request / input ke layar ellipse
-                    return request
+                        return request
+                    }
                 }
             }
         }

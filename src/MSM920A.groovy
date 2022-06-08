@@ -1,7 +1,11 @@
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
 import org.apache.commons.lang.exception.ExceptionUtils
@@ -39,16 +43,35 @@ public class MSM920A extends MSOHook{
         return result
     }
 
-    @Override
-    public GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
-        log.info("MSM920A Hooks onPreSubmit version: $version")
-        log.info("NextAction: ${screen.nextAction}")
-        log.info("AccountCode: ${screen.getField("COST_CTRE_SEG1I").getValue()}")
-        log.info("Account Desc: ${screen.getField("CCTRE_SEG_DESC1I").getValue()}")
-        log.info("Segment: ${screen.getField("SEGMENT_LEVEL1I").getValue()}")
-        log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I").getValue()}")
-        log.info("FKeys: ${screen.getField("FKEYS1I").getValue()}")
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
 
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
+
+    def integrationMaximo(GenericMsoRecord screen, String hostUrl){
         String AccountCode = screen.getField("COST_CTRE_SEG1I").getValue().trim()
         String AccountDesc = screen.getField("CCTRE_SEG_DESC1I").getValue().trim()
         String ActiveStatus = screen.getField("ACTIVE_STATUS1I").getValue()
@@ -61,20 +84,10 @@ public class MSM920A extends MSOHook{
         String Action = screen.nextAction
         String activeStat = ""
         MsoField errField = new MsoField()
-        String hostname;
-        InetAddress ip;
-        ip = InetAddress.getLocalHost()
-        hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
-        String postUrl = "{$hostUrl}/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
+
+        String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-GLCOMP-XML"
 
         AccountDesc = StringEscapeUtils.escapeXml(AccountDesc)
-        log.info("Active Status: ${screen.getField("ACTIVE_STATUS1I").getValue()}")
-        log.info("Segment: $Segment")
-        log.info("AccountCode: $AccountCode")
-        log.info("Account Description: $AccountDesc")
-        log.info("Option1: $Option1")
-        log.info("confDel: $confDel")
 
         if (ActiveStatus){
             if (ActiveStatus.trim() != ""){
@@ -245,6 +258,21 @@ public class MSM920A extends MSOHook{
                     }
                 }
             }
+        }
+    }
+
+    @Override
+    public GenericMsoRecord onPreSubmit(GenericMsoRecord screen){
+        String hostname
+        InetAddress ip
+        ip = InetAddress.getLocalHost()
+        hostname = ip.getHostName()
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
+        if (hostUrl != "" && active){
+            integrationMaximo(screen, hostUrl)
         }
     }
 }

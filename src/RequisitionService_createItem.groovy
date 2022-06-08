@@ -11,6 +11,7 @@ import com.mincom.enterpriseservice.ellipse.requisition.RequisitionServiceCreate
 import com.mincom.enterpriseservice.ellipse.workorder.WorkOrderServiceReadReplyDTO
 import com.mincom.enterpriseservice.exception.EnterpriseServiceOperationException
 import com.mincom.eql.Constraint
+import com.mincom.eql.Query
 import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import javax.naming.InitialContext
@@ -1085,19 +1086,24 @@ class RequisitionService_createItem extends  ServiceHook{
                 InetAddress ip
                 ip = InetAddress.getLocalHost()
                 String hostname = ip.getHostName()
-                String hostUrl = getHostUrl(hostname)
+                ArrayList config = getConfig(hostname)
+                String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+                Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+
                 String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-PRL-XML"
                 log.info("postUrl: $postUrl")
 
-                def url = new URL(postUrl)
-                connection = url.openConnection()
-                connection.setRequestMethod("POST")
-                connection.setDoOutput(true)
-                connection.setRequestProperty("Content-Type", "application/xml")
-                connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+                if (hostUrl != "" && active){
+                    def url = new URL(postUrl)
+                    connection = url.openConnection()
+                    connection.setRequestMethod("POST")
+                    connection.setDoOutput(true)
+                    connection.setRequestProperty("Content-Type", "application/xml")
+                    connection.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
 
-                connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-                log.info("responsecode: ${connection.getResponseCode()}")
+                    connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+                    log.info("responsecode: ${connection.getResponseCode()}")
+                }
             }
             catch (Exception e){
                 log.info("Exception: $e")
@@ -1175,6 +1181,33 @@ class RequisitionService_createItem extends  ServiceHook{
         String queryMSF010 = "select table_desc as tableDesc from msf010 where table_type = '+MAX' and table_code = '$instance'"
         Object queryMSF010Result = sql.firstRow(queryMSF010)
         result = queryMSF010Result ? queryMSF010Result.tableDesc ? queryMSF010Result.tableDesc.trim(): "" : ""
+
+        return result
+    }
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
+
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
 
         return result
     }

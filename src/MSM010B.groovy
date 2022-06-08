@@ -4,10 +4,15 @@
 //.................. pada saat Create / Modify UOM di Ellipse
 
 /*Library yang digunakan*/
+
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
+import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
 import com.mincom.ellipse.ejra.mso.GenericMsoRecord
 import com.mincom.ellipse.ejra.mso.MsoErrorMessage
 import com.mincom.ellipse.ejra.mso.MsoField
 import com.mincom.ellipse.hook.hooks.MSOHook
+import com.mincom.eql.Query
+import com.mincom.eql.impl.QueryImpl
 import groovy.sql.Sql
 import org.apache.commons.lang.StringEscapeUtils
 
@@ -46,6 +51,33 @@ class MSM010B extends MSOHook{
 
         return result
     }
+    def getConfig(String hostName){
+        ArrayList result = []
+        String instance
+
+        if (hostName.contains("ellprd")){
+            instance = "ELLPRD"
+        }
+        else if (hostName.contains("elltrn")){
+            instance = "ELLTRN"
+        }
+        else if (hostName.contains("elltst")){
+            instance = "ELLTST"
+        }
+        else {
+            instance = "ELLDEV"
+        }
+
+        Query queryMSF010 = new QueryImpl(MSF010Rec.class).and(MSF010Key.tableType.equalTo("+MAX")).and(MSF010Key.tableCode.equalTo(instance))
+        MSF010Rec msf010Rec = tools.edoi.firstRow(queryMSF010)
+
+        if (msf010Rec){
+            result.add(msf010Rec.getTableDesc().trim())
+            result.add(msf010Rec.getActiveFlag().trim())
+        }
+
+        return result
+    }
 
 //  annotation @Override menunjukkan bahwa event onPreSubmit ini akan mengganti class standard Ellipse (jika ada)
 //  Untuk program MSO, terdapat 3 event standard yang bisa dimodify dengan tipe parameter GenericMsoRecord:
@@ -65,7 +97,9 @@ class MSM010B extends MSOHook{
 
 // membaca url Ellipse yang sedang aktif dan assign ke variable "hostname" dengan tipe String
         String hostname = ip.getHostName()
-        String hostUrl = getHostUrl(hostname)
+        ArrayList config = getConfig(hostname)
+        String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+        Boolean active = config[1] ? config[1] == "Y" ? true : false : false
 
 // mendefinisikan variable "postUrl" yang akan menampung url tujuan integrasi ke API Maximo
         String postUrl
@@ -97,100 +131,102 @@ class MSM010B extends MSOHook{
         }
 
 // setting kondisi yang harus dipenuhi untuk pengiriman data ke API Maximo
-        if ((request.getField("FKEYS2I").getValue().trim().contains("XMIT-Confirm") && request.nextAction == 0) ||
-                (request.getField("FKEYS2I").getValue().trim().contains("XMIT-Update") && request.nextAction == 1)){
+        if (hostUrl != "" && active){
+            if ((request.getField("FKEYS2I").getValue().trim().contains("XMIT-Confirm") && request.nextAction == 0) ||
+                    (request.getField("FKEYS2I").getValue().trim().contains("XMIT-Update") && request.nextAction == 1)){
 // mendefinisikan pesan dalam format XML (sebagai String) untuk dikirimkan ke API Maximo
-            String xmlMessage = ""
-            if (tableType == 'JABR'){
-                postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-GLSUB-XML"
-                if (actionFlag == "D"){
-                    xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                            "<SyncMXE-GLSUB-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T12:30:30+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
-                            "    <MXE-GLSUB-XMLSet>\n" +
-                            "        <GLCOASUBLEGDER action=\"Delete\">\n" +
-                            "            <ACCOUNTCODE>$measureUnitID</ACCOUNTCODE>\n" +
-                            "            <ACTIVE>$setActiveFlag</ACTIVE>\n" +
-                            "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
-                            "            <ORGID>UBPL</ORGID>\n" +
-                            "        </GLCOASUBLEGDER>\n" +
-                            "    </MXE-GLSUB-XMLSet>\n" +
-                            "</SyncMXE-GLSUB-XML>"
-                }
-                else{
-                    xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                            "<SyncMXE-GLSUB-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T12:30:30+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
-                            "    <MXE-GLSUB-XMLSet>\n" +
-                            "        <GLCOASUBLEGDER>\n" +
-                            "            <ACCOUNTCODE>$measureUnitID</ACCOUNTCODE>\n" +
-                            "            <ACTIVE>$setActiveFlag</ACTIVE>\n" +
-                            "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
-                            "            <ORGID>UBPL</ORGID>\n" +
-                            "        </GLCOASUBLEGDER>\n" +
-                            "    </MXE-GLSUB-XMLSet>\n" +
-                            "</SyncMXE-GLSUB-XML>"
-                }
-            }
-            else {
-                postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-UOM-XML"
-                if (actionFlag == "D"){
-                    xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                            "<SyncMXE-UOM-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:21:02+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
-                            "    <MXE-UOM-XMLSet>\n" +
-                            "        <MEASUREUNIT action=\"Delete\">\n" +
-                            "            <MEASUREUNITID>$measureUnitID</MEASUREUNITID>\n" +
-                            "            <CONTENTUID>1000</CONTENTUID>\n" +
-                            "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
-                            "            <ORGID>UBPL</ORGID>\n" +
-                            "        </MEASUREUNIT>\n" +
-                            "    </MXE-UOM-XMLSet>\n" +
-                            "</SyncMXE-UOM-XML>"
+                String xmlMessage = ""
+                if (tableType == 'JABR'){
+                    postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-GLSUB-XML"
+                    if (actionFlag == "D"){
+                        xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                                "<SyncMXE-GLSUB-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T12:30:30+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
+                                "    <MXE-GLSUB-XMLSet>\n" +
+                                "        <GLCOASUBLEGDER action=\"Delete\">\n" +
+                                "            <ACCOUNTCODE>$measureUnitID</ACCOUNTCODE>\n" +
+                                "            <ACTIVE>$setActiveFlag</ACTIVE>\n" +
+                                "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
+                                "            <ORGID>UBPL</ORGID>\n" +
+                                "        </GLCOASUBLEGDER>\n" +
+                                "    </MXE-GLSUB-XMLSet>\n" +
+                                "</SyncMXE-GLSUB-XML>"
+                    }
+                    else{
+                        xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                                "<SyncMXE-GLSUB-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T12:30:30+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
+                                "    <MXE-GLSUB-XMLSet>\n" +
+                                "        <GLCOASUBLEGDER>\n" +
+                                "            <ACCOUNTCODE>$measureUnitID</ACCOUNTCODE>\n" +
+                                "            <ACTIVE>$setActiveFlag</ACTIVE>\n" +
+                                "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
+                                "            <ORGID>UBPL</ORGID>\n" +
+                                "        </GLCOASUBLEGDER>\n" +
+                                "    </MXE-GLSUB-XMLSet>\n" +
+                                "</SyncMXE-GLSUB-XML>"
+                    }
                 }
                 else {
-                    xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                            "<SyncMXE-UOM-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:21:02+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
-                            "    <MXE-UOM-XMLSet>\n" +
-                            "        <MEASUREUNIT>\n" +
-                            "            <MEASUREUNITID>$measureUnitID</MEASUREUNITID>\n" +
-                            "            <CONTENTUID>1000</CONTENTUID>\n" +
-                            "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
-                            "            <ORGID>UBPL</ORGID>\n" +
-                            "        </MEASUREUNIT>\n" +
-                            "    </MXE-UOM-XMLSet>\n" +
-                            "</SyncMXE-UOM-XML>"
+                    postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-UOM-XML"
+                    if (actionFlag == "D"){
+                        xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                                "<SyncMXE-UOM-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:21:02+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
+                                "    <MXE-UOM-XMLSet>\n" +
+                                "        <MEASUREUNIT action=\"Delete\">\n" +
+                                "            <MEASUREUNITID>$measureUnitID</MEASUREUNITID>\n" +
+                                "            <CONTENTUID>1000</CONTENTUID>\n" +
+                                "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
+                                "            <ORGID>UBPL</ORGID>\n" +
+                                "        </MEASUREUNIT>\n" +
+                                "    </MXE-UOM-XMLSet>\n" +
+                                "</SyncMXE-UOM-XML>"
+                    }
+                    else {
+                        xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                                "<SyncMXE-UOM-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:21:02+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
+                                "    <MXE-UOM-XMLSet>\n" +
+                                "        <MEASUREUNIT>\n" +
+                                "            <MEASUREUNITID>$measureUnitID</MEASUREUNITID>\n" +
+                                "            <CONTENTUID>1000</CONTENTUID>\n" +
+                                "            <DESCRIPTION>${StringEscapeUtils.escapeXml(measureDesc)}</DESCRIPTION>\n" +
+                                "            <ORGID>UBPL</ORGID>\n" +
+                                "        </MEASUREUNIT>\n" +
+                                "    </MXE-UOM-XMLSet>\n" +
+                                "</SyncMXE-UOM-XML>"
+                    }
                 }
-            }
 
-            log.info("ARS postUrl: $postUrl")
-            log.info("ARS XML MESSAGE: $xmlMessage")
+                log.info("ARS postUrl: $postUrl")
+                log.info("ARS XML MESSAGE: $xmlMessage")
 
 // proses berikut menjelaskan urutan pengiriman data ke API Maximo
-            def url = new URL(postUrl)
-            HttpURLConnection authConn = url.openConnection()
-            authConn.setRequestMethod("POST")
-            authConn.setDoOutput(true)
-            authConn.setRequestProperty("Content-Type", "application/xml")
-            authConn.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
+                def url = new URL(postUrl)
+                HttpURLConnection authConn = url.openConnection()
+                authConn.setRequestMethod("POST")
+                authConn.setDoOutput(true)
+                authConn.setRequestProperty("Content-Type", "application/xml")
+                authConn.setRequestProperty("maxauth", "bXhpbnRhZG06bXhpbnRhZG0=")
 
 // pada baris ini, pesan yang sudah diformat dalam bentuk xml dikirimkan ke API Maximo
-            authConn.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
-            log.info("responsecode: ${authConn.getResponseCode()}")
+                authConn.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
+                log.info("responsecode: ${authConn.getResponseCode()}")
 
 // membaca response dari API Maximo. Jika response code bukan "200" maka kembalikan error
-            if (authConn.getResponseCode() != 200) {
-                String responseMessage = authConn.content.toString()
-                log.info("responseMessage: $responseMessage")
-                String errorCode = "9999"
-                request.setErrorMessage(
-                        new MsoErrorMessage("",
-                                errorCode,
-                                responseMessage,
-                                MsoErrorMessage.ERR_TYPE_ERROR,
-                                MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
+                if (authConn.getResponseCode() != 200) {
+                    String responseMessage = authConn.content.toString()
+                    log.info("responseMessage: $responseMessage")
+                    String errorCode = "9999"
+                    request.setErrorMessage(
+                            new MsoErrorMessage("",
+                                    errorCode,
+                                    responseMessage,
+                                    MsoErrorMessage.ERR_TYPE_ERROR,
+                                    MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
 
-                errField.setName("TABLE_TYPE2I")
-                request.setCurrentCursorField(errField)
+                    errField.setName("TABLE_TYPE2I")
+                    request.setCurrentCursorField(errField)
 // jika error maka kembalikan request / input ke layar ellipse
-                return request
+                    return request
+                }
             }
         }
         return null
