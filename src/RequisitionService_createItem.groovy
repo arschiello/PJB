@@ -1068,32 +1068,32 @@ class RequisitionService_createItem extends  ServiceHook{
             log.info("ARS xmlMessage: \n$xmlMessage")
 
             HttpURLConnection connection
-            try {
-                InitialContext initial = new InitialContext()
-                Object CAISource = initial.lookup("java:jboss/datasources/ApplicationDatasource")
-                def sql = new Sql(CAISource)
+            InetAddress ip = InetAddress.getLocalHost()
+            String hostname = ip.getHostName()
+            ArrayList config = getConfig(hostname)
+            String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
+            Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+            
+            if (hostUrl != "" && active){
+                try {
+                    InitialContext initial = new InitialContext()
+                    Object CAISource = initial.lookup("java:jboss/datasources/ApplicationDatasource")
+                    def sql = new Sql(CAISource)
 
-                def date = new Date()
-                def sdf = new SimpleDateFormat("yyyyMMdd")
-                String currentDate = sdf.format(date)
-                def stf = new SimpleDateFormat("HHmmss")
-                String currentTime = stf.format(date)
+                    def date = new Date()
+                    def sdf = new SimpleDateFormat("yyyyMMdd")
+                    String currentDate = sdf.format(date)
+                    def stf = new SimpleDateFormat("HHmmss")
+                    String currentTime = stf.format(date)
 
-                String insertMSF071 = "Insert into MSF071 (ENTITY_TYPE,ENTITY_VALUE,REF_NO,SEQ_NUM,LAST_MOD_DATE,LAST_MOD_TIME,LAST_MOD_USER,REF_CODE,STD_TXT_KEY,LAST_MOD_EMP) " +
-                        "values ('MXR','$districtCode$mxPrNum$mxPrLineId','001','001','$currentDate','$currentTime','ADMIN','$resultPrNo$resultItemNo','            ','ADMIN')"
-                log.info("insertMSF071 Query: $insertMSF071")
-                sql.execute(insertMSF071)
-                InetAddress ip
-                ip = InetAddress.getLocalHost()
-                String hostname = ip.getHostName()
-                ArrayList config = getConfig(hostname)
-                String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
-                Boolean active = config[1] ? config[1] == "Y" ? true : false : false
+                    String insertMSF071 = "Insert into MSF071 (ENTITY_TYPE,ENTITY_VALUE,REF_NO,SEQ_NUM,LAST_MOD_DATE,LAST_MOD_TIME,LAST_MOD_USER,REF_CODE,STD_TXT_KEY,LAST_MOD_EMP) " +
+                            "values ('MXR','$districtCode$mxPrNum$mxPrLineId','001','001','$currentDate','$currentTime','ADMIN','$resultPrNo$resultItemNo','            ','ADMIN')"
+                    log.info("insertMSF071 Query: $insertMSF071")
+                    sql.execute(insertMSF071)
 
-                String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-PRL-XML"
-                log.info("postUrl: $postUrl")
+                    String postUrl = "${hostUrl}/meaweb/es/EXTSYS1/MXE-PRL-XML"
+                    log.info("postUrl: $postUrl")
 
-                if (hostUrl != "" && active){
                     def url = new URL(postUrl)
                     connection = url.openConnection()
                     connection.setRequestMethod("POST")
@@ -1103,19 +1103,20 @@ class RequisitionService_createItem extends  ServiceHook{
 
                     connection.getOutputStream().write(xmlMessage.getBytes("UTF-8"))
                     log.info("responsecode: ${connection.getResponseCode()}")
-                }
-            }
-            catch (Exception e){
-                log.info("Exception: $e")
-                if (connection.getResponseCode() != 200) {
-                    String responseMessage = connection.content.toString()
-                    log.info("responseMessage: $responseMessage")
-                    String errorCode = "9999"
 
-                    throw new EnterpriseServiceOperationException(
-                            new ErrorMessageDTO(
-                                    errorCode, responseMessage, "", 0, 0))
-                    return input
+                }
+                catch (Exception e){
+                    log.info("Exception: $e")
+                    if (connection.getResponseCode() != 200) {
+                        String responseMessage = connection.content.toString()
+                        log.info("responseMessage: $responseMessage")
+                        String errorCode = "9999"
+
+                        throw new EnterpriseServiceOperationException(
+                                new ErrorMessageDTO(
+                                        errorCode, responseMessage, "", 0, 0))
+                        return input
+                    }
                 }
             }
         }
