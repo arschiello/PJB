@@ -1073,7 +1073,7 @@ class RequisitionService_createItem extends  ServiceHook{
             ArrayList config = getConfig(hostname)
             String hostUrl = config[0] ? config[0].toString().trim() != "" ? config[0].toString().trim() : "" : ""
             Boolean active = config[1] ? config[1] == "Y" ? true : false : false
-            
+
             if (hostUrl != "" && active){
                 try {
                     InitialContext initial = new InitialContext()

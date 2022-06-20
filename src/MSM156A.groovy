@@ -890,7 +890,7 @@ class MSM156A extends MSOHook{
 
         String pBCActiveFlag = getModuleSwitch("+PBC", "MSM156A")
         log.info("PBC Active Flag: $pBCActiveFlag")
-        if (pBCActiveFlag != "" && pBCActiveFlag != "Y") {
+        if (!pBCActiveFlag || pBCActiveFlag == "" && pBCActiveFlag == "N") {
             return null
         }
 
