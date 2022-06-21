@@ -1,5 +1,7 @@
 import com.mincom.ellipse.edoi.ejb.msf010.MSF010Key
 import com.mincom.ellipse.edoi.ejb.msf010.MSF010Rec
+import com.mincom.ellipse.edoi.ejb.msf620.MSF620Key
+import com.mincom.ellipse.edoi.ejb.msf620.MSF620Rec
 import com.mincom.ellipse.hook.hooks.ServiceHook
 import com.mincom.ellipse.service.m3140.receiptdocument.ReceiptDocumentService
 import com.mincom.ellipse.types.m3140.instances.ReceiptDocumentDTO
@@ -246,6 +248,18 @@ class ReceiptDocumentService_update extends ServiceHook{
 
                 sql.eachRow(queryProcessWO) {row2 ->
                     String workOrder = row2.WORK_ORDER as String
+
+                    if (workOrder && workOrder.trim() != ""){
+                        Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(workOrder)).and(MSF620Key.dstrctCode.equalTo(districtCode))
+                        MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+                        if (msf620Rec){
+                            String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+                            if (originatorId != "ELLMAXADM"){
+                                return null
+                            }
+                        }
+
+                    }
 
                     def queryIreqItem = sql.firstRow("WITH MAT AS(\n" +
                             "SELECT DSTRCT_CODE\n" +

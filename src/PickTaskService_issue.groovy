@@ -552,6 +552,16 @@ class PickTaskService_issue extends ServiceHook{
 			String workOrder = row.WORK_ORDER as String
 			workOrder = workOrder.trim() != "" ? workOrder.trim() : ""
 			log.info("workOrder: $workOrder")
+
+			Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(workOrder)).and(MSF620Key.dstrctCode.equalTo(districtNo))
+			MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+			if (msf620Rec){
+				String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+				if (originatorId != "ELLMAXADM"){
+					return null
+				}
+			}
+
 			if (workOrder != ""){
 				String qryIreqItem = "WITH WOCOST AS (SELECT A.DSTRCT_CODE\n" +
 						"      ,A.WORK_ORDER\n" +
@@ -725,6 +735,15 @@ class PickTaskService_issue extends ServiceHook{
 			qtyIssued = quantityPicked ? quantityPicked : qtyIss ? qtyIss : qtyReq
 			String uom = row.UNIT_OF_ISSUE as String
 			BigDecimal itemPrice = row.ITEM_PRICE as BigDecimal
+
+			Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(workOrder)).and(MSF620Key.dstrctCode.equalTo(districtNo))
+			MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+			if (msf620Rec){
+				String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+				if (originatorId != "ELLMAXADM"){
+					return null
+				}
+			}
 
 			log.info("workOrder: $workOrder")
 			log.info("stockCode: $stockCode")

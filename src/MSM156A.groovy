@@ -748,9 +748,21 @@ class MSM156A extends MSOHook{
 
                 if (queryWO){
                     String wo = queryWO.WORK_ORDER as String
-                    if (wo.trim() == "")
+
+                    if (wo.trim() == "") {
                         return null
-                } else {
+                    }
+
+                    Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(wo)).and(MSF620Key.dstrctCode.equalTo(districtCode))
+                    MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+                    if (msf620Rec){
+                        String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+                        if (originatorId != "ELLMAXADM"){
+                            return null
+                        }
+                    }
+                }
+                else {
                     return null
                 }
 
@@ -890,97 +902,32 @@ class MSM156A extends MSOHook{
 
         String pBCActiveFlag = getModuleSwitch("+PBC", "MSM156A")
         log.info("PBC Active Flag: $pBCActiveFlag")
-        if (!pBCActiveFlag || pBCActiveFlag == "" && pBCActiveFlag == "N") {
-            return null
-        }
+        if (pBCActiveFlag.toUpperCase() == "Y") {
+            int nextAction = screen.nextAction
+            log.info("nextAction: $nextAction")
+            if (nextAction == 0 || nextAction == 1) {
+                String districtCode = tools.commarea.District
+                String pONo = screen.getField("PO_NO1I").getValue().trim()
+                String pOItemNo = screen.getField("PO_ITEM_NO1I").getValue().trim()
+                if (pOItemNo != "") pOItemNo = lastN(pOItemNo, 3)
 
-        int nextAction = screen.nextAction
-        log.info("nextAction: $nextAction")
+                Constraint pONumber = MSF221Key.poNo.equalTo(pONo)
+                Constraint pOItemNumber = MSF221Key.poItemNo.equalTo(pOItemNo)
 
-        if (nextAction == 0 || nextAction == 1) {
-            String districtCode = tools.commarea.District
-            String pONo = screen.getField("PO_NO1I").getValue().trim()
-            String pOItemNo = screen.getField("PO_ITEM_NO1I").getValue().trim()
-            if (pOItemNo != "") pOItemNo = lastN(pOItemNo, 3)
+                def query = new QueryImpl(MSF221Rec.class).and(pONumber).and(pOItemNumber)
 
-            Constraint pONumber = MSF221Key.poNo.equalTo(pONo)
-            Constraint pOItemNumber = MSF221Key.poItemNo.equalTo(pOItemNo)
+                MSF221Rec msf221Rec = tools.edoi.firstRow(query)
+                String printedStatus = msf221Rec.getStatus_221().trim()
+                String lastPrintRun = msf221Rec.getLastPrtRunno().trim()
 
-            def query = new QueryImpl(MSF221Rec.class).and(pONumber).and(pOItemNumber)
-
-            MSF221Rec msf221Rec = tools.edoi.firstRow(query)
-            String printedStatus = msf221Rec.getStatus_221().trim()
-            String lastPrintRun = msf221Rec.getLastPrtRunno().trim()
-
-            log.info("printedStatus: $printedStatus")
-            log.info("lastPrintRun: $lastPrintRun")
-            if (printedStatus != "1" && lastPrintRun == "0000") {
-                screen.setErrorMessage(
-                        new MsoErrorMessage(
-                                "",
-                                "9999",
-                                "PO belum dicetak sehingga tidak bisa diproses, mohon cetak PO terlebih dahulu",
-                                MsoErrorMessage.ERR_TYPE_ERROR,
-                                MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED
-                        )
-                )
-                MsoField errField = new MsoField()
-                errField.setName("VALUE_RECVD1I")
-                screen.setCurrentCursorField(errField)
-                return screen
-            }
-
-            BigDecimal tranValue = screen.getField("VALUE_RECVD1I").getValue().trim() as BigDecimal
-            BigDecimal orderValue = screen.getField("ORDER_VAL1I").getValue().trim() as BigDecimal
-
-            String preqStkCode = getPreqStkCode(districtCode, pONo, pOItemNo)
-            String poItemType = getPoItemType(districtCode, pONo, pOItemNo)
-            BigDecimal pOGrossPrice = getPoGrossPrice(districtCode,pONo, pOItemNo)
-
-            log.info("District: $districtCode")
-            log.info("PO Number: $pONo")
-            log.info("PO Item: $pOItemNo")
-            log.info("preqStkCode: $preqStkCode")
-            log.info("PO Item Type: $poItemType")
-            log.info("pOGrossPrice: $pOGrossPrice")
-            log.info("Ordered Value: $orderValue")
-
-            String requisitionNo
-            if (poItemType != "" && poItemType.trim() != "O") {
-                requisitionNo = preqStkCode.substring(0, 6) + "  " + preqStkCode.substring(7, 9)
-            } else {
-                requisitionNo = preqStkCode.trim()
-            }
-            String projectNo = getProjectNo(districtCode, requisitionNo)
-            log.info("Project No on preExecute: $projectNo")
-
-            if (projectNo && projectNo != "") {
-                String finalisedDate = getFinalisedDate(districtCode, projectNo)
-                log.info("finalisedDate: $finalisedDate")
-                if (finalisedDate &&  finalisedDate != "") {
-                    String errorMessage = "Transaksi tidak dapat dilakukan karena PRK sudah difinalisasi"
-                    String errorCode = "9999"
-                    screen.setErrorMessage(
-                            new MsoErrorMessage("",
-                                    errorCode,
-                                    errorMessage,
-                                    MsoErrorMessage.ERR_TYPE_ERROR,
-                                    MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
-
-                    MsoField errField = new MsoField()
-                    errField.setName("VALUE_RECVD1I")
-                    screen.setCurrentCursorField(errField)
-                    return screen
-                }
-
-                Boolean zeroBudget = checkZeroBudget(districtCode, projectNo)
-                log.info("zeroBudget Flag: $zeroBudget")
-                if (zeroBudget) {
+                log.info("printedStatus: $printedStatus")
+                log.info("lastPrintRun: $lastPrintRun")
+                if (printedStatus != "1" && lastPrintRun == "0000") {
                     screen.setErrorMessage(
                             new MsoErrorMessage(
                                     "",
                                     "9999",
-                                    "PRK tidak bisa digunakan, karena tidak memiliki budget!",
+                                    "PO belum dicetak sehingga tidak bisa diproses, mohon cetak PO terlebih dahulu",
                                     MsoErrorMessage.ERR_TYPE_ERROR,
                                     MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED
                             )
@@ -991,49 +938,112 @@ class MSM156A extends MSOHook{
                     return screen
                 }
 
-                Boolean overBudget = validateBudget(districtCode, projectNo, tranValue, orderValue)
-                log.info("Overbudget Flag: $overBudget")
-                if (overBudget) {
-                    BigDecimal totalCommitment = getCommitmentAI(districtCode, projectNo) +
-                            getCommitmentAO(districtCode, projectNo)
-                    BigDecimal totalActual = getActualAI(districtCode, projectNo) +
-                            getActualAO(districtCode, projectNo)
-                    BigDecimal totalBudget = getTotalBudget(districtCode, projectNo)
-                    BigDecimal remainingBudget = totalBudget - totalActual - totalCommitment
+                BigDecimal tranValue = screen.getField("VALUE_RECVD1I").getValue().trim() as BigDecimal
+                BigDecimal orderValue = screen.getField("ORDER_VAL1I").getValue().trim() as BigDecimal
 
-                    log.info("Error Message Checkpoint...")
-                    log.info("totalBudget: $totalBudget")
-                    log.info("totalCommitment: $totalCommitment")
-                    log.info("totalActual: $totalActual")
-                    log.info("sisaAnggaran: $remainingBudget")
-                    log.info("ProjNo: ---$projectNo---")
-                    log.info("ProjNoLength: " + projectNo.length())
-                    log.info("proj34: " + projectNo.substring(2, 4))
-                    log.info("proj4: " + projectNo.substring(3, 4).trim())
+                String preqStkCode = getPreqStkCode(districtCode, pONo, pOItemNo)
+                String poItemType = getPoItemType(districtCode, pONo, pOItemNo)
+                BigDecimal pOGrossPrice = getPoGrossPrice(districtCode,pONo, pOItemNo)
 
-                    String errorMessage = "Nilai transaksi overbudget: \n" +
-                            "Alokasi PRK: $totalBudget\n " +
-                            "Realisasi PRK: $totalActual\n" +
-                            "Commitment PRK: $totalCommitment\n" +
-                            "Sisa Anggaran PRK: $remainingBudget\n" +
-                            "Nilai transaksi saat ini sebesar $tranValue lebih besar dari nilai anggaran\n" +
-                            "Segera ajukan revisi anggaran kepada divisi terkait"
-                    String errorCode = "9999"
+                log.info("District: $districtCode")
+                log.info("PO Number: $pONo")
+                log.info("PO Item: $pOItemNo")
+                log.info("preqStkCode: $preqStkCode")
+                log.info("PO Item Type: $poItemType")
+                log.info("pOGrossPrice: $pOGrossPrice")
+                log.info("Ordered Value: $orderValue")
 
-                    screen.setErrorMessage(
-                            new MsoErrorMessage("",
-                                    errorCode,
-                                    errorMessage,
-                                    MsoErrorMessage.ERR_TYPE_ERROR,
-                                    MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
+                String requisitionNo
+                if (poItemType != "" && poItemType.trim() != "O") {
+                    requisitionNo = preqStkCode.substring(0, 6) + "  " + preqStkCode.substring(7, 9)
+                } else {
+                    requisitionNo = preqStkCode.trim()
+                }
+                String projectNo = getProjectNo(districtCode, requisitionNo)
+                log.info("Project No on preExecute: $projectNo")
 
-                    MsoField errField = new MsoField()
-                    errField.setName("VALUE_RECVD1I")
-                    screen.setCurrentCursorField(errField)
-                    return screen
+                if (projectNo && projectNo != "") {
+                    String finalisedDate = getFinalisedDate(districtCode, projectNo)
+                    log.info("finalisedDate: $finalisedDate")
+                    if (finalisedDate &&  finalisedDate != "") {
+                        String errorMessage = "Transaksi tidak dapat dilakukan karena PRK sudah difinalisasi"
+                        String errorCode = "9999"
+                        screen.setErrorMessage(
+                                new MsoErrorMessage("",
+                                        errorCode,
+                                        errorMessage,
+                                        MsoErrorMessage.ERR_TYPE_ERROR,
+                                        MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
+
+                        MsoField errField = new MsoField()
+                        errField.setName("VALUE_RECVD1I")
+                        screen.setCurrentCursorField(errField)
+                        return screen
+                    }
+
+                    Boolean zeroBudget = checkZeroBudget(districtCode, projectNo)
+                    log.info("zeroBudget Flag: $zeroBudget")
+                    if (zeroBudget) {
+                        screen.setErrorMessage(
+                                new MsoErrorMessage(
+                                        "",
+                                        "9999",
+                                        "PRK tidak bisa digunakan, karena tidak memiliki budget!",
+                                        MsoErrorMessage.ERR_TYPE_ERROR,
+                                        MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED
+                                )
+                        )
+                        MsoField errField = new MsoField()
+                        errField.setName("VALUE_RECVD1I")
+                        screen.setCurrentCursorField(errField)
+                        return screen
+                    }
+
+                    Boolean overBudget = validateBudget(districtCode, projectNo, tranValue, orderValue)
+                    log.info("Overbudget Flag: $overBudget")
+                    if (overBudget) {
+                        BigDecimal totalCommitment = getCommitmentAI(districtCode, projectNo) +
+                                getCommitmentAO(districtCode, projectNo)
+                        BigDecimal totalActual = getActualAI(districtCode, projectNo) +
+                                getActualAO(districtCode, projectNo)
+                        BigDecimal totalBudget = getTotalBudget(districtCode, projectNo)
+                        BigDecimal remainingBudget = totalBudget - totalActual - totalCommitment
+
+                        log.info("Error Message Checkpoint...")
+                        log.info("totalBudget: $totalBudget")
+                        log.info("totalCommitment: $totalCommitment")
+                        log.info("totalActual: $totalActual")
+                        log.info("sisaAnggaran: $remainingBudget")
+                        log.info("ProjNo: ---$projectNo---")
+                        log.info("ProjNoLength: " + projectNo.length())
+                        log.info("proj34: " + projectNo.substring(2, 4))
+                        log.info("proj4: " + projectNo.substring(3, 4).trim())
+
+                        String errorMessage = "Nilai transaksi overbudget: \n" +
+                                "Alokasi PRK: $totalBudget\n " +
+                                "Realisasi PRK: $totalActual\n" +
+                                "Commitment PRK: $totalCommitment\n" +
+                                "Sisa Anggaran PRK: $remainingBudget\n" +
+                                "Nilai transaksi saat ini sebesar $tranValue lebih besar dari nilai anggaran\n" +
+                                "Segera ajukan revisi anggaran kepada divisi terkait"
+                        String errorCode = "9999"
+
+                        screen.setErrorMessage(
+                                new MsoErrorMessage("",
+                                        errorCode,
+                                        errorMessage,
+                                        MsoErrorMessage.ERR_TYPE_ERROR,
+                                        MsoErrorMessage.ERR_SEVERITY_UNSPECIFIED))
+
+                        MsoField errField = new MsoField()
+                        errField.setName("VALUE_RECVD1I")
+                        screen.setCurrentCursorField(errField)
+                        return screen
+                    }
                 }
             }
         }
+
         return null
     }
 

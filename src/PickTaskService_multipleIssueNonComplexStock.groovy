@@ -536,6 +536,15 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
             workOrder = workOrder.trim() != "" ? workOrder.trim() : ""
             log.info("workOrder: $workOrder")
             if (workOrder != ""){
+                Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(workOrder)).and(MSF620Key.dstrctCode.equalTo(districtNo))
+                MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+                if (msf620Rec){
+                    String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+                    if (originatorId != "ELLMAXADM"){
+                        return null
+                    }
+                }
+
                 String qryIreqItem = "WITH WOCOST AS (SELECT A.DSTRCT_CODE\n" +
                         "      ,A.WORK_ORDER\n" +
                         "      ,SUM(CASE WHEN A.DSTRCT_CODE = '$districtNo' AND (A.REC900_TYPE = 'S' OR (A.REC900_TYPE = 'P' AND B.SERV_ITM_IND = ' ')) THEN B.TRAN_AMOUNT ELSE 0 END) MAT_COST\n" +
@@ -727,6 +736,15 @@ class PickTaskService_multipleIssueNonComplexStock extends ServiceHook{
                 log.info("binCode: $binCode")
 
                 if (workOrder != ""){
+                    Query queryMSF620 = new QueryImpl(MSF620Rec.class).and(MSF620Key.workOrder.equalTo(workOrder)).and(MSF620Key.dstrctCode.equalTo(districtNo))
+                    MSF620Rec msf620Rec = tools.edoi.firstRow(queryMSF620)
+                    if (msf620Rec){
+                        String originatorId = msf620Rec.getOriginatorId() ? msf620Rec.getOriginatorId().trim() : ""
+                        if (originatorId != "ELLMAXADM"){
+                            return null
+                        }
+                    }
+
                     String xmlMessage = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                             "<SyncMXE-ACTMAT-XML xmlns=\"http://www.ibm.com/maximo\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" creationDateTime=\"2021-04-15T11:37:06+07:00\" baseLanguage=\"EN\" transLanguage=\"EN\" event=\"0\" maximoVersion=\"7620190514-1348V7611-365\">\n" +
                             "    <MXE-ACTMAT-XMLSet>\n" +
